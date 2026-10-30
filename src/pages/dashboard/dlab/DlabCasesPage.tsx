@@ -21,6 +21,9 @@ import { TeethPicker } from "@/components/dlab/TeethPicker";
 import { HoldDialog } from "@/components/dlab/HoldDialog";
 import { RemakeDialog } from "@/components/dlab/RemakeDialog";
 import { PrintTravelerButton } from "@/components/dlab/PrintTravelerButton";
+import { MaterialLots } from "@/components/dlab/MaterialLots";
+import { useLabRecords } from "@/hooks/useLabRecords";
+import { casesUsingLot } from "@/lib/labConformity";
 import { blockedReason, nextStage, prevStage, splitLegacyTeeth } from "@/lib/labWorkflow";
 import { toast } from "@/hooks/use-toast";
 import { useOrg } from "@/hooks/useOrg";
@@ -50,9 +53,12 @@ export default function DlabCasesPage() {
   const technicians = useTechnicians();
   const techName = (id?: string | null) => technicians.find((t) => t.id === id)?.full_name;
 
+  const { data: lotRecords = [] } = useLabRecords("material_lot");
+  // Lot recall: searching a lot / batch number also finds every case that used it.
+  const recallIds = useMemo(() => (q.trim() ? casesUsingLot(lotRecords as any[], q) : []), [lotRecords, q]);
   const visible = useMemo(() => cases.filter((c) => !isCancelled(c) &&
     (tech === "all" || (tech === "none" ? !c.technician_id : c.technician_id === tech)) &&
-    (!q || [c.case_number, clientOf(c), patientOf(c), c.work_type].join(" ").toLowerCase().includes(q.toLowerCase()))), [cases, q, tech]);
+    (!q || recallIds.includes(c.id) || [c.case_number, clientOf(c), patientOf(c), c.work_type].join(" ").toLowerCase().includes(q.toLowerCase()))), [cases, q, tech, recallIds]);
   const open = cases.find((c) => c.id === openId) || null;
 
   const hold = useHoldCase();
@@ -119,7 +125,7 @@ export default function DlabCasesPage() {
       <div className="flex flex-wrap gap-2">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Search case, clinic, patient…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input className="pl-9" placeholder="Search case, clinic, patient, lot no…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <Select value={tech} onValueChange={setTech}>
           <SelectTrigger className="w-48" aria-label="Technician"><SelectValue /></SelectTrigger>
@@ -129,6 +135,7 @@ export default function DlabCasesPage() {
             {technicians.map((t) => <SelectItem key={t.id} value={t.id}>{t.full_name}</SelectItem>)}
           </SelectContent>
         </Select>
+        {recallIds.length > 0 && <Badge variant="destructive" className="self-center">Lot recall: {recallIds.length} case{recallIds.length === 1 ? "" : "s"} used lot "{q.trim()}"</Badge>}
         {selected.length > 0 && (
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={batchAdvance}>Advance {selected.length} selected<ChevronRight className="ml-0.5 h-3.5 w-3.5" /></Button>
@@ -237,6 +244,7 @@ export default function DlabCasesPage() {
                   </Select>
                 </div>
                 )}
+                <MaterialLots c={open} teeth={teethOf(open)} />
                 <CaseFiles caseId={open.id} />
               </div>
               )}

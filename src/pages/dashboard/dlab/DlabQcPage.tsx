@@ -87,6 +87,7 @@ export default function DlabQcPage() {
                   {r.data?.inspector ? ` · by ${r.data.inspector}` : ""}
                   {r.data?.failed?.length ? ` · ${r.data.failed.join(", ")}` : ""}
                   {r.data?.sent_to ? ` · sent to ${stageLabel(r.data.sent_to)}` : ""}
+                  {r.data?.photos?.length ? ` · ${r.data.photos.length} photo${r.data.photos.length === 1 ? "" : "s"}` : ""}
                 </p>
               </div>
               <Badge variant={r.status === "passed" ? "secondary" : "outline"} className="shrink-0 capitalize">{r.status}</Badge>
@@ -107,6 +108,8 @@ function InspectDialog({ c, technician, onClose }: { c: LabCaseRow; technician?:
   const [notes, setNotes] = useState("");
   const [rework, setRework] = useState<string>("");
   const [busy, setBusy] = useState(false);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const { currentOrg } = useOrg();
   const failed = failedPoints(a);
   const needsRework = failed.some((p) => p.key !== "disinfection");
   const target = rework || suggestRework(a);
@@ -116,18 +119,27 @@ function InspectDialog({ c, technician, onClose }: { c: LabCaseRow; technician?:
     setBusy(true);
     try {
       const sb = supabase as any;
+      // Defect photos go into the case files so the bench sees them during rework.
+      const photoPaths: string[] = [];
+      for (const f of photos) {
+        const path = `${currentOrg?.org_id}/${c.id}/qc_${Date.now()}_${f.name.replace(/[^\w.\-]+/g, "_")}`;
+        const { error: upErr } = await supabase.storage.from("lab-case-files").upload(path, f);
+        if (upErr) throw upErr;
+        photoPaths.push(path);
+      }
       // One transaction: the case move and the inspection record succeed or fail together.
       const { error } = await sb.rpc("lab_submit_qc", {
         p_case_id: c.id, p_qc_status: out.qc_status, p_status: out.status, p_record_status: out.record,
         p_data: {
           ...a, notes, work_type: c.work_type, shade: c.shade, client: clientOf(c), technician: technician || "",
           inspector: user?.user_metadata?.full_name || user?.email || "", failed: failed.map((p) => p.label),
-          sent_to: out.qc_status === "rework_needed" ? out.status : null,
+          sent_to: out.qc_status === "rework_needed" ? out.status : null, photos: photoPaths,
         },
       });
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ["lab_cases"] });
       qc.invalidateQueries({ queryKey: ["lab_records"] });
+      qc.invalidateQueries({ queryKey: ["case-files"] });
       toast({ title: out.status === "ready" ? `${c.case_number} passed — Ready to Ship` : out.qc_status === "rework_needed" ? `${c.case_number} sent back to ${stageLabel(out.status)}` : `${c.case_number} kept in QC` });
       onClose();
     } catch (e: any) {
@@ -171,6 +183,13 @@ function InspectDialog({ c, technician, onClose }: { c: LabCaseRow; technician?:
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>{REWORK_TARGETS.map((t) => <SelectItem key={t.stage} value={t.stage}>{t.label}</SelectItem>)}</SelectContent>
               </Select>
+            </div>
+          )}
+          {failed.length > 0 && (
+            <div>
+              <Label className="text-xs">Defect photos {photos.length ? `(${photos.length})` : ""}</Label>
+              <Input type="file" accept="image/*" capture="environment" multiple className="mt-1"
+                onChange={(e) => setPhotos(Array.from(e.target.files || []))} />
             </div>
           )}
           <div><Label className="text-xs">Inspector notes</Label><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>

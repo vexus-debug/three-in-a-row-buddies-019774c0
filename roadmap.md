@@ -55,3 +55,9 @@
 - [x] Bench locked to the signed-in technician; supervisor picker
 - [x] Bridge abutment / pontic marking
 - [x] Fix timer bug when a start time of 0 was treated as stopped
+
+## Lab Phase 3: Compliance & clinical quality
+- [x] Material lots per case + Statement of Conformity print
+- [x] QC defect photos saved to case files
+- [x] Lot recall search on the Case Board
+- [x] Dentist impression scorecard on Reports
