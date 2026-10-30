@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { normalizeStage } from "@/config/dentalLab";
 import { useLabRecords } from "@/hooks/useLabRecords";
 import { useClientSummaries, money } from "./dlabMoney";
+import { dentistScorecard } from "@/lib/labConformity";
 
 export default function DlabReportsPage() {
   const { data: clients, cases, payments } = useClientSummaries();
@@ -32,6 +33,8 @@ export default function DlabReportsPage() {
       owing: clients.reduce((s, c) => s + Math.max(c.balance, 0), 0),
     };
   }, [cases, payments, warranties, clients]);
+
+  const scorecard = useMemo(() => dentistScorecard(cases as any[], warranties as any[]), [cases, warranties]);
 
   const kpis = [
     { label: "Average turnaround", value: `${r.avgDays.toFixed(1)} days` },
@@ -72,6 +75,24 @@ export default function DlabReportsPage() {
             {[...clients].sort((a, b) => b.billed - a.billed).slice(0, 6).map((c) => <div key={c.name} className="flex justify-between py-2"><span className="truncate">{c.name}</span><span className="font-medium">{money(c.billed)}</span></div>)}
           </CardContent></Card>
       </div>
+      <Card><CardHeader className="pb-2"><CardTitle className="text-base">Dentist impression scorecard</CardTitle>
+        <p className="text-xs text-muted-foreground">Remakes caused by the clinic (impressions, preps, clearance) per prescribing dentist.</p></CardHeader>
+        <CardContent className="overflow-x-auto text-sm">
+          {!scorecard.length ? <p className="py-3 text-muted-foreground">No cases yet.</p> : (
+            <table className="w-full">
+              <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Dentist</th><th>Cases</th><th>Clinic remakes</th><th>Rate</th><th>Main issues</th></tr></thead>
+              <tbody className="divide-y">
+                {scorecard.map((d) => (
+                  <tr key={d.name}>
+                    <td className="py-2 font-medium">{d.name}</td><td>{d.cases}</td><td>{d.clinicRemakes}</td>
+                    <td className={d.pct >= 10 ? "font-semibold text-destructive" : ""}>{d.pct}%</td>
+                    <td className="text-xs text-muted-foreground">{Object.entries(d.faults).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} (${n})`).join(", ") || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent></Card>
     </div>
   );
 }
