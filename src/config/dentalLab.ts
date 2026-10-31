@@ -45,6 +45,10 @@ export interface RegisterConfig {
   dateLabel?: string;
   statuses: string[];
   fields: RegisterField[];
+  /** How the amount is shown: money (default) or a plain count of units. */
+  amountFormat?: "money" | "units";
+  /** Whether "Total shown" makes sense (false for unit prices and stock counts). */
+  showTotal?: boolean;
 }
 
 export const LAB_REGISTERS: Record<string, RegisterConfig> = {
@@ -68,11 +72,17 @@ export const LAB_REGISTERS: Record<string, RegisterConfig> = {
     kind: "materials", title: "Materials & Lots", itemName: "material lot", titleLabel: "Material",
     description: "Zirconia discs, resins, porcelains and alloys with lot numbers for traceability.",
     amountLabel: "Quantity in stock", dateLabel: "Expiry date", statuses: ["in stock", "low", "used up", "recalled"],
+    amountFormat: "units", showTotal: false,
     fields: [
       { key: "category", label: "Category", type: "select", options: ["Zirconia disc", "Lithium disilicate", "PMMA / wax", "3D printing resin", "Porcelain powder", "Alloy / titanium", "Implant component", "Other"] },
       { key: "lot", label: "Lot / batch number" },
       { key: "brand", label: "Manufacturer / brand" },
-      { key: "spec", label: "Shade / size / translucency" },
+      { key: "spec", label: "Shade" },
+      { key: "unit", label: "Counted in", type: "select", options: ["discs", "blocks", "bottles", "ml", "grams", "pieces"] },
+      { key: "min_stock", label: "Reorder when at or below", type: "number" },
+      { key: "size", label: "Size (e.g. 98 mm × 14 mm, 500 ml, 4.3 mm platform)" },
+      { key: "translucency", label: "Translucency", type: "select", options: ["HT", "ST", "SHT", "UT", "Multi-layer", "Opaque", "Not applicable"] },
+      { key: "unit_cost", label: "Cost per unit (₦)", type: "number" },
       { key: "ce", label: "CE / ISO mark", type: "select", options: ["Yes", "No"] },
       { key: "supplier", label: "Supplier" },
     ],
@@ -103,11 +113,12 @@ export const LAB_REGISTERS: Record<string, RegisterConfig> = {
   "work-types": {
     kind: "work-types", title: "Work Types", itemName: "work type", titleLabel: "Work type",
     description: "Your catalogue of restorations with default price and turnaround.",
-    amountLabel: "Default price", statuses: ["active", "retired"],
+    amountLabel: "Default price", statuses: ["active", "retired"], showTotal: false,
     fields: [
-      { key: "category", label: "Category", type: "select", options: ["Fixed", "Removable", "Implant", "Orthodontic", "Other"] },
-      { key: "turnaround_days", label: "Turnaround (days)", type: "number" },
+      { key: "category", label: "Category", type: "select", options: ["Fixed", "Removable", "Implant", "Orthodontic", "Appliance", "Other"] },
+      { key: "turnaround_days", label: "Turnaround (working days)", type: "number" },
       { key: "material", label: "Default material" },
+      { key: "cdt", label: "CDT / procedure code (e.g. D2740)" },
     ],
   },
   shades: {
@@ -116,7 +127,12 @@ export const LAB_REGISTERS: Record<string, RegisterConfig> = {
     statuses: ["active", "retired"],
     fields: [
       { key: "guide", label: "Shade guide", type: "select", options: ["VITA Classical", "VITA 3D-Master", "Ivoclar Chromascop", "Custom"] },
+      { key: "cervical", label: "Cervical (gum third)" },
+      { key: "body", label: "Body (middle third)" },
+      { key: "incisal", label: "Incisal / translucency" },
+      { key: "stump", label: "Stump shade", type: "select", options: ["ND1", "ND2", "ND3", "ND4", "ND5", "ND6", "ND7", "ND8", "ND9"] },
       { key: "notes", label: "Characterisation notes", type: "textarea" },
+      { key: "recipe", label: "Stain / glaze recipe and firing notes", type: "textarea" },
     ],
   },
   "external-labs": {

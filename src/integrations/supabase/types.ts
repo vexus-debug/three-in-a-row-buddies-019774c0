@@ -7217,6 +7217,7 @@ export type Database = {
         Args: { p_case_id: string; p_reason: string; p_status: string }
         Returns: undefined
       }
+      lab_return_stock_lot: { Args: { p_usage_id: string }; Returns: undefined }
       lab_submit_qc: {
         Args: {
           p_case_id: string
@@ -7225,6 +7226,10 @@ export type Database = {
           p_record_status: string
           p_status: string
         }
+        Returns: string
+      }
+      lab_use_stock_lot: {
+        Args: { p_case_id: string; p_stock_id: string; p_units: number }
         Returns: string
       }
       list_org_branches: {
