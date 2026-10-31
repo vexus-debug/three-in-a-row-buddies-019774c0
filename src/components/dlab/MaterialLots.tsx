@@ -98,7 +98,8 @@ export function MaterialLots({ c, teeth }: { c: LabCaseRow; teeth: string[] }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold">Materials used (lot traceability)</p>
-        <Button size="sm" variant="outline" onClick={printStatement}><FileCheck2 className="mr-1 h-3.5 w-3.5" />Statement of Conformity</Button>
+        <Button size="sm" variant="outline" onClick={printStatement}
+          title={conformityBlockers({ qc_status: (c as any).qc_status, lots: lots.map((l) => l.data), doctor: c.clinic_doctor_name }).join(". ") || "Print the release statement"}><FileCheck2 className="mr-1 h-3.5 w-3.5" />Statement of Conformity</Button>
       </div>
       {lots.length > 0 && (
         <ul className="divide-y rounded-lg border text-sm">
