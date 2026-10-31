@@ -70,7 +70,7 @@ export function MaterialLots({ c, teeth }: { c: LabCaseRow; teeth: string[] }) {
   };
 
   const remove = async (id: string) => {
-    const fromStock = !!lots.find((l) => l.id === id)?.data?.stock_id;
+    const fromStock = !!(lots.find((l) => l.id === id)?.data as any)?.stock_id;
     if (!confirm(fromStock ? "Remove this lot from the case and put the units back in stock?" : "Remove this material lot from the case?")) return;
     const { error } = fromStock
       ? await (supabase as any).rpc("lab_return_stock_lot", { p_usage_id: id })
