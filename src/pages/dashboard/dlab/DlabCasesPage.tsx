@@ -30,6 +30,10 @@ import { useOrg } from "@/hooks/useOrg";
 import { useLabClientNames, canonicalClient, useClientPriceLookup } from "./dlabLinks";
 import { useBarcodeScanner, scanBeep } from "@/hooks/useBarcodeScanner";
 import { matchScannedCase, teethLabel, type ToothRole } from "@/lib/labScanner";
+import { useWorkTypeCatalog, useShadeLibrary } from "@/hooks/useLabCatalog";
+import { suggestedFee } from "@/lib/labCatalog";
+import { addWorkingDaysYmd } from "@/lib/labCalendar";
+import { useLabWorkCalendar } from "@/hooks/useLabWorkCalendar";
 
 /** Structured teeth, falling back to the legacy "Teeth:" line in instructions. */
 const teethOf = (c: LabCaseRow): string[] => {
@@ -287,7 +291,10 @@ function EditCase({ c, technicians, onDone }: { c: LabCaseRow; technicians: { id
     fee: String(c.lab_fee ?? ""), discount: String(c.discount ?? ""), instructions: ((c as any).teeth?.length ? c.instructions : legacy.rest) || "", rush: isRush(c), technician_id: c.technician_id || "none",
   });
   const set = (k: string, val: any) => setV((p) => ({ ...p, [k]: val }));
-  const types = WORK_TYPES.includes(v.work_type) ? WORK_TYPES : [v.work_type, ...WORK_TYPES];
+  const catalog = useWorkTypeCatalog();
+  const shades = useShadeLibrary();
+  const catNames = catalog.map((w) => w.name);
+  const types = !v.work_type || catNames.includes(v.work_type) ? catNames : [v.work_type, ...catNames];
   const save = () => {
     const t = v.technician_id === "none" ? null : v.technician_id;
     update.mutate({
@@ -311,7 +318,8 @@ function EditCase({ c, technicians, onDone }: { c: LabCaseRow; technicians: { id
         </Select>
       </F>
       <div className="sm:col-span-2"><F label="Teeth"><TeethPicker value={teeth} onChange={setTeeth} roles={roles} onRolesChange={setRoles} /></F></div>
-      <F label="Shade"><Input value={v.shade} onChange={(e) => set("shade", e.target.value)} /></F>
+      <F label="Shade"><Input list="dlab-edit-shades" value={v.shade} onChange={(e) => set("shade", e.target.value)} />
+        <datalist id="dlab-edit-shades">{shades.options.map((o) => <option key={o} value={o} />)}</datalist></F>
       <F label="Material"><Input value={v.material} onChange={(e) => set("material", e.target.value)} /></F>
       <F label="Due date"><Input type="date" value={v.due_date} onChange={(e) => set("due_date", e.target.value)} /></F>
       <F label="Technician"><TechSelect value={v.technician_id} onChange={(x) => set("technician_id", x)} technicians={technicians} /></F>
@@ -351,24 +359,35 @@ export function NewCaseDialog({ open, onOpenChange, defaultClient = "" }: { open
   const names = useLabClientNames();
   const priceFor = useClientPriceLookup();
   const [feeTouched, setFeeTouched] = useState(false);
+  const catalog = useWorkTypeCatalog();
+  const shades = useShadeLibrary();
+  const { cal } = useLabWorkCalendar();
+  const [dueTouched, setDueTouched] = useState(false);
+  const wt = (name: string) => catalog.find((w) => w.name === name);
   const agreed = priceFor(v.client, v.work_type);
+  const catalogPrice = wt(v.work_type)?.price ?? null;
   const set = (k: string, val: any) => setV((p) => {
     const next = { ...p, [k]: val };
     if (!feeTouched && (k === "client" || k === "work_type")) {
-      const price = priceFor(next.client, next.work_type);
-      if (price !== null) next.fee = String(price);
+      const price = suggestedFee(priceFor(next.client, next.work_type), wt(next.work_type)?.price ?? null);
+      next.fee = price !== null ? String(price) : "";
+    }
+    if (k === "work_type") {
+      const w = wt(val);
+      if (!dueTouched && w) next.due_date = addWorkingDaysYmd(new Date(), w.turnaround, cal);
+      if (w?.material && !p.material) next.material = w.material;
     }
     return next;
   });
   const submit = async () => {
     if (!v.client.trim()) return;
     await create.mutateAsync({ ...v, technician_id: v.technician_id === "none" ? null : v.technician_id, client: canonicalClient(v.client, names) });
-    setFeeTouched(false);
+    setFeeTouched(false); setDueTouched(false);
     setV(blank);
     onOpenChange(false);
   };
   return (
-    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (o) { setFeeTouched(false); setV({ ...blank, client: defaultClient }); } }}>
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (o) { setFeeTouched(false); setDueTouched(false); const w = catalog[0]; setV({ ...blank, client: defaultClient, work_type: w?.name || blank.work_type, due_date: w ? addWorkingDaysYmd(new Date(), w.turnaround, cal) : "", fee: w?.price ? String(w.price) : "", material: w?.material || "" }); } }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Receive a new case</DialogTitle></DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -381,16 +400,19 @@ export function NewCaseDialog({ open, onOpenChange, defaultClient = "" }: { open
           <F label="Work type">
             <Select value={v.work_type} onValueChange={(x) => set("work_type", x)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>{WORK_TYPES.map((w) => <SelectItem key={w} value={w}>{w}</SelectItem>)}</SelectContent>
+              <SelectContent>{catalog.map((w) => <SelectItem key={w.name} value={w.name}>{w.name}{w.cdt ? ` · ${w.cdt}` : ""}</SelectItem>)}</SelectContent>
             </Select>
+            {wt(v.work_type) && <p className="text-[11px] text-muted-foreground">Usual turnaround: {wt(v.work_type)!.turnaround} working days</p>}
           </F>
           <div className="sm:col-span-2"><F label="Teeth"><TeethPicker value={v.teeth} onChange={(t) => set("teeth", t)} roles={v.tooth_roles} onRolesChange={(r) => set("tooth_roles", r)} /></F></div>
-          <F label="Shade"><Input placeholder="e.g. A2" value={v.shade} onChange={(e) => set("shade", e.target.value)} /></F>
+          <F label="Shade"><Input list="dlab-new-shades" placeholder="e.g. A2" value={v.shade} onChange={(e) => set("shade", e.target.value)} />
+            <datalist id="dlab-new-shades">{shades.options.map((o) => <option key={o} value={o} />)}</datalist></F>
           <F label="Material"><Input value={v.material} onChange={(e) => set("material", e.target.value)} /></F>
-          <F label="Due date"><Input type="date" value={v.due_date} onChange={(e) => set("due_date", e.target.value)} /></F>
+          <F label="Due date"><Input type="date" value={v.due_date} onChange={(e) => { setDueTouched(true); set("due_date", e.target.value); }} /></F>
           <F label="Fee (₦)">
             <Input type="number" value={v.fee} onChange={(e) => { setFeeTouched(true); set("fee", e.target.value); }} />
-            {agreed !== null && <p className="text-[11px] text-muted-foreground">Agreed price for this clinic: {money(agreed)}{feeTouched && Number(v.fee) !== agreed ? " (changed)" : ""}</p>}
+            {agreed !== null ? <p className="text-[11px] text-muted-foreground">Agreed price for this clinic: {money(agreed)}{feeTouched && Number(v.fee) !== agreed ? " (changed)" : ""}</p>
+              : catalogPrice !== null && <p className="text-[11px] text-muted-foreground">Catalogue price: {money(catalogPrice)}{feeTouched && Number(v.fee) !== catalogPrice ? " (changed)" : ""}</p>}
           </F>
           <F label="Technician"><TechSelect value={v.technician_id} onChange={(x) => set("technician_id", x)} technicians={technicians} /></F>
           <label className="flex items-center gap-2 self-end pb-2 text-sm"><Checkbox checked={v.rush} onCheckedChange={(c) => set("rush", !!c)} />Rush case</label>
