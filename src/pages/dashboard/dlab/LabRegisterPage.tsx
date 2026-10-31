@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { useLabInvoices } from "@/hooks/useLabInvoices";
 import { useLabClientNames, canonicalClient, clientKey, applyToInvoice } from "./dlabLinks";
 import { GenerateRecurringButton } from "@/components/dlab/GenerateRecurringButton";
+import { stockState, stockSummary, expiringSoon } from "@/lib/labCatalog";
 
 const money = (n: number) => `₦${Number(n || 0).toLocaleString()}`;
 
@@ -87,6 +88,13 @@ function Register({ config }: { config: RegisterConfig }) {
     (filter === "all" || r.status === filter) &&
     (!q || JSON.stringify([r.title, r.data]).toLowerCase().includes(q.toLowerCase()))), [rows, q, filter]);
   const total = visible.reduce((s, r) => s + Number(r.amount || 0), 0);
+  const isStock = config.kind === "materials";
+  const today = new Date().toISOString().slice(0, 10);
+  const fmtAmount = (r: Partial<LabRecord>) => config.amountFormat === "units"
+    ? `${Number(r.amount || 0).toLocaleString()} ${r.data?.unit || "units"} left`
+    : money(Number(r.amount || 0));
+  const summary = isStock ? stockSummary(rows as any, today) : null;
+  const soonIds = isStock ? new Set(expiringSoon(rows as any, today).map((r: any) => r.id)) : new Set<string>();
 
   const openNew = () => setEditing({ title: "", status: config.statuses[0], amount: 0, record_date: "", data: {} });
 
@@ -115,7 +123,15 @@ function Register({ config }: { config: RegisterConfig }) {
         ))}
       </div>
 
-      {config.amountLabel && visible.length > 0 && (
+      {summary && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {([["Usable lots", summary.usable], ["Low stock", summary.low], ["Expiring in 30 days", summary.expiringSoon], ["Expired", summary.expired], ["Recalled", summary.recalled]] as const).map(([l, n]) => (
+            <Card key={l}><CardContent className="p-3"><p className="text-xs text-muted-foreground">{l}</p><p className="text-xl font-semibold">{n}</p></CardContent></Card>
+          ))}
+        </div>
+      )}
+
+      {config.amountLabel && config.showTotal !== false && visible.length > 0 && (
         <p className="text-sm text-muted-foreground">Total shown: <span className="font-semibold text-foreground">{money(total)}</span></p>
       )}
 
@@ -137,7 +153,14 @@ function Register({ config }: { config: RegisterConfig }) {
                     <p className="truncate font-semibold">{r.title || "Untitled"}</p>
                     {r.record_date && <p className="text-xs text-muted-foreground">{config.dateLabel}: {format(new Date(r.record_date), "d MMM yyyy")}</p>}
                   </div>
-                  <Badge variant="secondary" className="capitalize shrink-0">{r.status}</Badge>
+                  {isStock ? (() => {
+                    const st = stockState(r as any, today);
+                    const bad = st !== "in stock";
+                    return <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Badge variant={bad ? "destructive" : "secondary"} className="capitalize">{st}</Badge>
+                      {soonIds.has(r.id) && <Badge variant="outline" className="text-[10px]">Expires soon</Badge>}
+                    </div>;
+                  })() : <Badge variant="secondary" className="capitalize shrink-0">{r.status}</Badge>}
                 </div>
                 <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                   {config.fields.filter((f) => r.data?.[f.key]).map((f) => (
@@ -148,7 +171,7 @@ function Register({ config }: { config: RegisterConfig }) {
                   ))}
                 </dl>
                 <div className="flex items-center justify-between border-t pt-2">
-                  <span className="text-sm font-semibold">{config.amountLabel ? money(r.amount) : ""}</span>
+                  <span className="text-sm font-semibold">{config.amountLabel ? fmtAmount(r) : ""}</span>
                   <div className="flex gap-1">
                     <Button size="icon" variant="ghost" aria-label="Edit" onClick={() => setEditing(r)}><Pencil className="h-4 w-4" /></Button>
                     <Button size="icon" variant="ghost" aria-label="Remove" onClick={() => removeRecord(r)}><Trash2 className="h-4 w-4" /></Button>
